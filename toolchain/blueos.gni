@@ -238,6 +238,7 @@ template("blueos_toolchain") {
     if (current_os == "mac") {
       link_map_opt = "-Wl,-map,"
     }
+
     tool("rust_bin") {
       depfile = "{{target_out_dir}}/{{crate_name}}.d"
       mapfile = "{{target_out_dir}}/{{crate_name}}.map"
@@ -269,8 +270,39 @@ template("blueos_toolchain") {
       depfile = "{{target_out_dir}}/{{target_output_name}}/{{crate_name}}.d"
       outfile =
           "{{target_out_dir}}/{{target_output_name}}/lib{{crate_name}}.rlib"
-      command = "{{rustenv}} $clippy_driver --crate-name {{crate_name}} {{source}} --crate-type {{crate_type}} --emit=dep-info=$depfile,link {{rustflags}} $rustc_lint_flags $clippy_lint_flags -o $outfile.clippy {{rustdeps}} {{externs}}"
-      command += " && {{rustenv}} $rustc --crate-name {{crate_name}} {{source}} --crate-type {{crate_type}} --emit=dep-info=$depfile,link {{rustflags}} $rustc_lint_flags -o $outfile {{rustdeps}} {{externs}}"
+
+      base_clippy_command = "{{rustenv}} $clippy_driver --crate-name {{crate_name}} {{source}} --crate-type {{crate_type}} --emit=dep-info=$depfile,link {{rustflags}} $rustc_lint_flags $clippy_lint_flags -o $outfile.clippy {{rustdeps}} {{externs}}"
+
+      base_rustc_command = "{{rustenv}} $rustc --crate-name {{crate_name}} {{source}} --crate-type {{crate_type}} --emit=dep-info=$depfile,link {{rustflags}} $rustc_lint_flags -o $outfile {{rustdeps}} {{externs}}"
+
+      if (defined(miri_sysroot)) {
+        assert(
+            miri_sysroot != "",
+            "MIRI_SYSROOT is not set, if you want to run miri test, set it as path/to/miri-sysroot")
+        sysroot_arg = " --sysroot " + miri_sysroot
+
+        # echo_command = "echo \"{{crate_name}}\" is using --sysroot ${miri_sysroot} "
+      } else {
+        sysroot_arg = ""
+        # echo_command = ""
+      }
+
+      command = base_clippy_command + sysroot_arg + " && " +
+                base_rustc_command + sysroot_arg
+
+      # command = base_clippy_command + sysroot_arg + " && " +
+      #           base_rustc_command + sysroot_arg + " && " +
+      #           echo_command
+
+      if (defined(externs_outputs) && externs_outputs) {
+        txt_out_file =
+            "{{target_out_dir}}/{{target_output_name}}/{{crate_name}}.txt"
+        rustdeps_file_command = "echo \"{{rustdeps}}\" > $txt_out_file"
+        externs_file_command = "echo \"{{externs}}\" >> $txt_out_file"
+
+        command = rustdeps_file_command + " && " + externs_file_command
+      }
+
       description = "RUST $outfile"
       outputs = [ outfile ]
     }
